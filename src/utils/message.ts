@@ -39,9 +39,9 @@ class Handler {
 
   handle: Record<string, any>;
 
-  targetHandle: Record<string, any> = {};
+  targetHandle: Record<string, any> | undefined;
 
-  targetPromise: Promise<any>;
+  targetPromise: Promise<Record<string, any>>;
 
   targetPromiseResolve: ((value: any) => void) | undefined;
 
@@ -66,7 +66,7 @@ class Handler {
         break;
       case MessageType.HANDLE_INSTANCE:
         const { handle } = data as { handle: Record<string, ValueWrapper> };
-        this.targetHandle = Object.entries(handle).reduce(
+        const nextHandle = Object.entries(handle).reduce(
           (acc, [key, value]) => {
             if (value.type === "function") {
               acc[key] = (...args: any[]) => {
@@ -95,18 +95,23 @@ class Handler {
           },
           {} as any
         );
-        this.targetPromiseResolve?.(this.targetHandle);
+        // 初次更新通知
+        if (!this.targetHandle) {
+          this.targetPromiseResolve?.(this.targetHandle);
+        }
+        this.targetHandle = nextHandle;
+        this.handleChangeListener.forEach((cb) => cb(this.targetHandle as any));
         break;
       case MessageType.REMOVE_INSTANCE:
-        this.targetHandle = {};
+        this.targetHandle = undefined;
         break;
       case MessageType.UPDATE_FIELD:
         const { key, value } = data;
-        this.targetHandle[key] = value;
+        if (this.targetHandle) this.targetHandle[key] = value;
         break;
       case MessageType.REMOVE_FIELD:
         const { key: key2 } = data;
-        this.targetHandle[key2] = undefined;
+        if (this.targetHandle) this.targetHandle[key2] = undefined;
         break;
       case MessageType.INSTANCE_CALL:
         const { key: key3, args, id } = data;
@@ -145,10 +150,18 @@ class Handler {
     });
   }
 
-  start() {
+  sendHandle() {
     this.send({
       type: MessageType.HANDLE_INSTANCE,
       handle: structuralize(this.handle),
+    });
+  }
+
+  updateHandle(handle: Record<string, any>) {
+    this.handle = handle;
+    this.send({
+      type: MessageType.HANDLE_INSTANCE,
+      handle: structuralize(handle),
     });
   }
 
@@ -160,7 +173,7 @@ class Handler {
 
   getTargetHandle() {
     return this.targetPromise.then(() => {
-      return new Proxy(this.targetHandle, {
+      return new Proxy(this.targetHandle || {}, {
         get: (target, key) => {
           return target[key as string];
         },
@@ -169,6 +182,18 @@ class Handler {
         },
       });
     });
+  }
+
+  handleChangeListener: ((handle: Record<string, any>) => void)[] = [];
+
+  onHandleChange(cb: (handle: Record<string, any>) => void) {
+    this.handleChangeListener.push(cb);
+  }
+
+  removeHandleChangeListener(cb: (handle: Record<string, any>) => void) {
+    this.handleChangeListener = this.handleChangeListener.filter(
+      (listener) => listener !== cb
+    );
   }
 }
 

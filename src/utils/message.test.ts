@@ -1,4 +1,4 @@
-import { test, expect } from "vitest";
+import { test, expect, vi } from "vitest";
 import { Handler } from "./message";
 
 test("message", async () => {
@@ -39,4 +39,22 @@ test("message", async () => {
     filePath: "test",
     fileContent: 'export default () => console.log("hello world")',
   });
+
+  const listenHandleChange = vi.fn();
+
+  handlerB.onHandleChange(listenHandleChange);
+
+  handlerA.updateHandle({ a: 2 });
+
+  await Promise.resolve();
+
+  expect(listenHandleChange).toBeCalledWith({ a: 2 });
+
+  handlerB.removeHandleChangeListener(listenHandleChange);
+
+  handlerA.updateHandle({ a: 3 });
+
+  await Promise.resolve();
+
+  expect(listenHandleChange).toBeCalledTimes(1);
 });
