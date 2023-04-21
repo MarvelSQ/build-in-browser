@@ -121,7 +121,7 @@ class Handler {
         });
         break;
       case MessageType.INSTANCE_CALL_RESULT:
-        this.callListeners.filter((cb) => {
+        this.callListeners = this.callListeners.filter((cb) => {
           const result = cb(data);
           return !result;
         });
