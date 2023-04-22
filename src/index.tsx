@@ -1,5 +1,10 @@
-import { useState } from "react";
+import { Button, Space } from "antd";
+import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
+import Code from "./Code";
+import FilePicker from "./FilePicker";
+import "./index.css";
+import { getChildren, resolveFile } from "./utils/filehandle";
 import { Handler } from "./utils/message";
 
 if ("serviceWorker" in navigator) {
@@ -9,7 +14,11 @@ if ("serviceWorker" in navigator) {
 }
 
 function openDirectory() {
-  window.showDirectoryPicker().then(async (directoryHandle) => {});
+  return window.showDirectoryPicker().catch((err) => {
+    console.log("Failed to open directory picker");
+    console.error(err);
+    return null;
+  });
 }
 
 const channel = new MessageChannel();
@@ -49,19 +58,64 @@ channel.port1.onmessage = (event) => {
 function App() {
   const [openFrame, setOpenFrame] = useState(false);
 
+  const directoryHandleRef = useRef<FileSystemDirectoryHandle | null>(null);
+
+  const [treeData, setTreeData] = useState<{}[]>([]);
+
+  const [file, setFile] = useState<{
+    filePath: string;
+    code: string;
+  } | null>(null);
+
   return (
     <>
-      <button
-        onClick={() => {
-          // setOpenFrame((openFrame) => !openFrame);
+      <Space.Compact block>
+        <Button
+          onClick={() => {
+            openDirectory().then(async (res) => {
+              directoryHandleRef.current = res;
+              if (res) {
+                const items = await getChildren(res);
+                setTreeData(items);
+              }
 
-          const module = `${window.location.origin}/demo/test`;
-          import(module).then((res) => console.log(res));
-        }}
-      >
-        test
-      </button>
-      {openFrame && <iframe src="/demo/test" />}
+              const result = await resolveFile(
+                res as FileSystemDirectoryHandle,
+                "node_modules/.pnpm/@babel+code-frame@7.16.7/node_modules/@babel/code-frame/lib"
+              );
+
+              console.log(result);
+            });
+            // setOpenFrame((openFrame) => !openFrame);
+
+            // const module = `${window.location.origin}/demo/test`;
+            // import(module).then((res) => console.log(res));
+          }}
+        >
+          {directoryHandleRef.current
+            ? directoryHandleRef.current.name
+            : "Select Directory"}
+        </Button>
+        <FilePicker
+          type="file"
+          treeData={treeData}
+          onSelect={(path) => {
+            resolveFile(
+              directoryHandleRef.current as FileSystemDirectoryHandle,
+              path
+            ).then((res) => {
+              if (res.type === "file") {
+                setFile({
+                  filePath: path,
+                  code: res.fileContent as string,
+                });
+              }
+            });
+          }}
+        />
+        {openFrame && <iframe src="/demo/test" />}
+      </Space.Compact>
+      <Code filePath={file?.filePath} code={file?.code} />
     </>
   );
 }
